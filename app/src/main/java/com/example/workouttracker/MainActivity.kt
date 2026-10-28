@@ -1,0 +1,229 @@
+package com.example.workouttracker
+
+import android.content.Context
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.*
+
+data class WorkoutItem(
+    val id: Long,
+    val exercise: String,
+    val weight: String,
+    val reps: String,
+    val sets: String,
+    val date: String
+)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    WorkoutTrackerScreen(context = this)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WorkoutTrackerScreen(context: Context) {
+    val prefs = remember { context.getSharedPreferences("workout_storage", Context.MODE_PRIVATE) }
+    var exercise by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var reps by remember { mutableStateOf("") }
+    var sets by remember { mutableStateOf("") }
+    val workoutList = remember { mutableStateListOf<WorkoutItem>() }
+
+    LaunchedEffect(Unit) {
+        val rawJson = prefs.getString("workouts", "[]") ?: "[]"
+        try {
+            val jsonArray = JSONArray(rawJson)
+            workoutList.clear()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                workoutList.add(
+                    WorkoutItem(
+                        id = obj.getLong("id"),
+                        exercise = obj.getString("exercise"),
+                        weight = obj.getString("weight"),
+                        reps = obj.getString("reps"),
+                        sets = obj.getString("sets"),
+                        date = obj.getString("date")
+                    )
+                )
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun saveWorkouts() {
+        val jsonArray = JSONArray()
+        workoutList.forEach { item ->
+            val obj = JSONObject().apply {
+                put("id", item.id)
+                put("exercise", item.exercise)
+                put("weight", item.weight)
+                put("reps", item.reps)
+                put("sets", item.sets)
+                put("date", item.date)
+            }
+            jsonArray.put(obj)
+        }
+        prefs.edit().putString("workouts", jsonArray.toString()).apply()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Трекер тренировок", fontWeight = FontWeight.Bold) }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp)
+        ) {
+            OutlinedTextField(
+                value = exercise,
+                onValueChange = { exercise = it },
+                label = { Text("Упражнение (напр. Жим лёжа)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = weight,
+                    onValueChange = { weight = it },
+                    label = { Text("Вес (кг)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = sets,
+                    onValueChange = { sets = it },
+                    label = { Text("Подходы") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = reps,
+                    onValueChange = { reps = it },
+                    label = { Text("Повт.") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = {
+                    if (exercise.isNotBlank()) {
+                        val currentDate = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())
+                        val newItem = WorkoutItem(
+                            id = System.currentTimeMillis(),
+                            exercise = exercise.trim(),
+                            weight = weight.ifBlank { "0" },
+                            reps = reps.ifBlank { "0" },
+                            sets = sets.ifBlank { "1" },
+                            date = currentDate
+                        )
+                        workoutList.add(0, newItem)
+                        saveWorkouts()
+                        exercise = ""
+                        weight = ""
+                        reps = ""
+                        sets = ""
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Записать подход")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "История тренировок (${workoutList.size})",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(workoutList, key = { it.id }) { item ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.exercise,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "${item.weight} кг × ${item.sets} подх. по ${item.reps} повт.",
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = item.date,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                )
+                            }
+                            IconButton(onClick = {
+                                workoutList.remove(item)
+                                saveWorkouts()
+                            }) {
+                                Text("✕", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
